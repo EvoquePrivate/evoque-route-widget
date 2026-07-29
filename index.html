@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Evoque Route Preview</title>
+  <script src="https://js.jotform.com/JotFormCustomWidget.min.js"></script>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #171717;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --accent: #111827;
+      --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Arial, Helvetica, sans-serif; }
+    .wrap { width: 100%; padding: 8px 4px 4px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+    input {
+      width: 100%; min-height: 44px; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; font-size: 16px; background: #fff; color: var(--text);
+    }
+    input:focus { outline: 2px solid #9ca3af; outline-offset: 1px; }
+    #map { width: 100%; height: 330px; margin-top: 14px; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
+    .summary { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-size: 14px; }
+    .summary strong { display: block; font-size: 16px; margin-top: 2px; }
+    .status { margin-top: 8px; color: var(--muted); font-size: 13px; min-height: 18px; }
+    .status.error { color: var(--danger); }
+    .hidden { display: none; }
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+      #map { height: 280px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="grid">
+      <div>
+        <label for="pickup">Pickup location</label>
+        <input id="pickup" type="text" autocomplete="off" placeholder="Enter pickup address or landmark" />
+      </div>
+      <div>
+        <label for="dropoff">Drop-off location</label>
+        <input id="dropoff" type="text" autocomplete="off" placeholder="Enter drop-off address or landmark" />
+      </div>
+    </div>
+
+    <div id="map" aria-label="Route map"></div>
+
+    <div id="summary" class="summary hidden" aria-live="polite">
+      <div><span>Distance</span><strong id="distance">—</strong></div>
+      <div><span>Estimated drive time</span><strong id="duration">—</strong></div>
+    </div>
+    <div id="status" class="status" aria-live="polite">Enter both locations to preview the route.</div>
+  </div>
+
+  <script>
+    let map;
+    let directionsService;
+    let directionsRenderer;
+    let pickupAutocomplete;
+    let dropoffAutocomplete;
+    let latestResult = null;
+
+    const pickupInput = document.getElementById('pickup');
+    const dropoffInput = document.getElementById('dropoff');
+    const statusEl = document.getElementById('status');
+    const summaryEl = document.getElementById('summary');
+    const distanceEl = document.getElementById('distance');
+    const durationEl = document.getElementById('duration');
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle('error', isError);
+    }
+
+    function initializeMap() {
+      map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: 34.0522, lng: -118.2437 },
+        zoom: 10,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false
+      });
+
+      directionsService = new google.maps.DirectionsService();
+      directionsRenderer = new google.maps.DirectionsRenderer({
+        map,
+        suppressMarkers: false,
+        preserveViewport: false
+      });
+
+      pickupAutocomplete = new google.maps.places.Autocomplete(pickupInput, {
+        fields: ['formatted_address', 'geometry', 'name', 'place_id'],
+        componentRestrictions: { country: 'us' }
+      });
+      dropoffAutocomplete = new google.maps.places.Autocomplete(dropoffInput, {
+        fields: ['formatted_address', 'geometry', 'name', 'place_id'],
+        componentRestrictions: { country: 'us' }
+      });
+
+      pickupAutocomplete.addListener('place_changed', calculateRoute);
+      dropoffAutocomplete.addListener('place_changed', calculateRoute);
+      pickupInput.addEventListener('change', calculateRoute);
+      dropoffInput.addEventListener('change', calculateRoute);
+
+      if (window.JFCustomWidget) {
+        JFCustomWidget.subscribe('ready', function(data) {
+          if (data && data.value) {
+            try {
+              const saved = JSON.parse(data.value);
+              pickupInput.value = saved.pickup || '';
+              dropoffInput.value = saved.dropoff || '';
+              setTimeout(calculateRoute, 400);
+            } catch (e) {
+              // Ignore malformed saved data.
+            }
+          }
+          JFCustomWidget.requestFrameResize({ height: 455 });
+        });
+
+        JFCustomWidget.subscribe('submit', function() {
+          const value = JSON.stringify(latestResult || {
+            pickup: pickupInput.value.trim(),
+            dropoff: dropoffInput.value.trim(),
+            distance: '',
+            duration: ''
+          });
+          JFCustomWidget.sendSubmit({
+            valid: Boolean(pickupInput.value.trim() && dropoffInput.value.trim()),
+            value
+          });
+        });
+      }
+    }
+
+    function calculateRoute() {
+      const origin = pickupInput.value.trim();
+      const destination = dropoffInput.value.trim();
+
+      if (!origin || !destination || !directionsService) {
+        summaryEl.classList.add('hidden');
+        setStatus('Enter both locations to preview the route.');
+        return;
+      }
+
+      setStatus('Calculating route…');
+
+      directionsService.route({
+        origin,
+        destination,
+        travelMode: google.maps.TravelMode.DRIVING,
+        provideRouteAlternatives: false
+      }, function(result, status) {
+        if (status !== 'OK' || !result.routes.length) {
+          latestResult = null;
+          summaryEl.classList.add('hidden');
+          setStatus('We could not calculate that route. Please choose an address from the suggestions.', true);
+          return;
+        }
+
+        directionsRenderer.setDirections(result);
+        const leg = result.routes[0].legs[0];
+        const pickup = leg.start_address || origin;
+        const dropoff = leg.end_address || destination;
+        const distance = leg.distance ? leg.distance.text : '';
+        const duration = leg.duration ? leg.duration.text : '';
+
+        pickupInput.value = pickup;
+        dropoffInput.value = dropoff;
+        distanceEl.textContent = distance || '—';
+        durationEl.textContent = duration || '—';
+        summaryEl.classList.remove('hidden');
+        setStatus('Route preview ready.');
+
+        latestResult = { pickup, dropoff, distance, duration };
+        if (window.JFCustomWidget) {
+          JFCustomWidget.sendData({ value: JSON.stringify(latestResult) });
+        }
+      });
+    }
+
+    window.initializeMap = initializeMap;
+  </script>
+
+  <!-- Replace YOUR_GOOGLE_MAPS_API_KEY before publishing. -->
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCDYzOzfdMdN25Ad_yxyypQTnNjdTf5aYY&libraries=places&callback=initializeMap"></script>
+</body>
+</html>
