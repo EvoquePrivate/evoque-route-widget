@@ -46,3 +46,4 @@ Submission value format
 
 Important limitation
 A normal Jotform custom widget cannot directly read values from separate sibling GeoComplete fields using the documented widget API. This build therefore owns both address inputs itself. That is the reliable way to get one map and one route without duplicate fields.
+ 
