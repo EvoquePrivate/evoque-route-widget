@@ -28,6 +28,7 @@
       width: 100%;
       margin: 0;
       padding: 0;
+      overflow-x: hidden;
     }
 
     body {
@@ -48,12 +49,24 @@
       margin-bottom: 18px;
     }
 
-    label {
-      display: block;
-      margin-bottom: 8px;
-      color: #ffffff;
-      font-size: 14px;
-      font-weight: 600;
+    .grid label,
+    label[for="pickup"],
+    label[for="dropoff"] {
+      display: block !important;
+      margin-bottom: 8px !important;
+      color: #ffffff !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      font-size: 14px !important;
+      font-weight: 600 !important;
+      text-shadow: none !important;
+    }
+
+    body,
+    .wrap,
+    .grid,
+    .grid > div {
+      color: #ffffff !important;
     }
 
     input {
@@ -84,7 +97,7 @@
 
     #map {
       width: 100%;
-      height: 430px;
+      height: 320px;
       overflow: hidden;
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -134,8 +147,6 @@
       display: none;
     }
 
-    /* Google Places autocomplete dropdown */
-
     .pac-container {
       z-index: 999999 !important;
       overflow: hidden;
@@ -159,7 +170,7 @@
       }
 
       #map {
-        height: 320px;
+        height: 280px;
       }
 
       .summary {
@@ -171,7 +182,6 @@
 
 <body>
   <div class="wrap">
-
     <div class="grid">
       <div>
         <label for="pickup">Pickup location</label>
@@ -198,11 +208,7 @@
 
     <div id="map" aria-label="Route map"></div>
 
-    <div
-      id="summary"
-      class="summary hidden"
-      aria-live="polite"
-    >
+    <div id="summary" class="summary hidden" aria-live="polite">
       <div>
         <span>Distance</span>
         <strong id="distance">—</strong>
@@ -214,14 +220,9 @@
       </div>
     </div>
 
-    <div
-      id="status"
-      class="status"
-      aria-live="polite"
-    >
+    <div id="status" class="status" aria-live="polite">
       Enter both locations to preview the route.
     </div>
-
   </div>
 
   <script>
@@ -251,13 +252,18 @@
       }
 
       window.setTimeout(function () {
-        const height = Math.max(
-          document.body.scrollHeight,
-          document.documentElement.scrollHeight
+        const wrap = document.querySelector(".wrap");
+
+        if (!wrap) {
+          return;
+        }
+
+        const height = Math.ceil(
+          wrap.getBoundingClientRect().height
         );
 
         JFCustomWidget.requestFrameResize({
-          height: height + 10
+          height: height
         });
       }, 100);
     }
@@ -532,11 +538,6 @@
 
     window.initializeMap =
       initializeMap;
-
-    window.addEventListener(
-      "resize",
-      resizeWidget
-    );
   </script>
 
 
